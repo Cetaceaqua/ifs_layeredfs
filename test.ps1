@@ -8,8 +8,21 @@ $ErrorActionPreference = 'Stop'
 $Build32 = 'X:\layeredfs_build32'
 $Build64 = 'X:\layeredfs_build64'
 
-meson test -C $Build32 --print-errorlogs @args
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+# leading 32/64 args pick the arch(es); the rest is passed to meson test
+$Archs = @()
+$MesonArgs = @($args)
+while ($MesonArgs.Count -gt 0 -and ($MesonArgs[0] -eq '32' -or $MesonArgs[0] -eq '64')) {
+    $Archs += $MesonArgs[0]
+    $MesonArgs = @($MesonArgs | Select-Object -Skip 1)
+}
+if ($Archs.Count -eq 0) { $Archs = @('32', '64') }
 
-meson test -C $Build64 --print-errorlogs @args
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+if ($Archs -contains '32') {
+    meson test -C $Build32 --print-errorlogs @MesonArgs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if ($Archs -contains '64') {
+    meson test -C $Build64 --print-errorlogs @MesonArgs
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}

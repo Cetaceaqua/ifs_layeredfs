@@ -17,14 +17,18 @@ $ErrorActionPreference = 'Stop'
 
 $Wipe = $false
 $SetupExtra = @()
+$Archs = @()
 foreach ($a in $args) {
     if ($a -eq '--wipe') {
         $Wipe = $true
         $SetupExtra += '--wipe'
+    } elseif ($a -eq '32' -or $a -eq '64') {
+        $Archs += $a
     } else {
         throw "Unknown argument: $a"
     }
 }
+if ($Archs.Count -eq 0) { $Archs = @('32', '64') }
 
 $ToolchainBin = 'C:\llvm-mingw\bin'
 if (Test-Path $ToolchainBin) {
@@ -50,13 +54,18 @@ $Cross64 = if ($env:CROSS_64) { $env:CROSS_64 } else { 'cross-clang-mingw-64-win
 
 if (Test-Path $DistDir) { Remove-Item -Recurse -Force $DistDir }
 
-# x86
-if ($Wipe -or -not (Test-Path (Join-Path $Build32 'build.ninja'))) {
-    Invoke-Checked meson setup --cross-file $Cross32 @SetupExtra $Build32
-    Invoke-Checked meson setup --cross-file $Cross64 @SetupExtra $Build64
+if ($Archs -contains '32') {
+    if ($Wipe -or -not (Test-Path (Join-Path $Build32 'build.ninja'))) {
+        Invoke-Checked meson setup --cross-file $Cross32 @SetupExtra $Build32
+    }
+    Invoke-Checked meson compile -C $Build32
 }
-Invoke-Checked meson compile -C $Build32
-Invoke-Checked meson compile -C $Build64
+if ($Archs -contains '64') {
+    if ($Wipe -or -not (Test-Path (Join-Path $Build64 'build.ninja'))) {
+        Invoke-Checked meson setup --cross-file $Cross64 @SetupExtra $Build64
+    }
+    Invoke-Checked meson compile -C $Build64
+}
 
 # TEMP: skip dist/install step; re-enable later.
 exit 0
