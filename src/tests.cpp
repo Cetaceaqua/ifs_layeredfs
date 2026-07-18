@@ -26,6 +26,8 @@ FOREACH_EXTRA_FUNC(AVS_FUNC_PTR)
 #define LOAD_FUNC(obfus_name, ret_type, name, ...)                                                 \
     ASSERT_TRUE((name = (decltype(name))GetProcAddress(avs, obfus_name)));
 
+void PrintTo(const istring& s, std::ostream* os) { *os << s.downcast_ref(); }
+
 class LogTestName : public testing::EmptyTestEventListener {
     void OnTestStart(const testing::TestInfo& info) override {
         log_misc("--------- Running {}.{}", info.test_suite_name(), info.name());
@@ -99,6 +101,44 @@ TEST_P(DevModeOnOff, CaseInsensitiveFolders) {
         find_first_modfolder("OhNO"), Optional(config.get_mod_folder() / "Case_Sensitive/OhNO/"));
     EXPECT_THAT(
         find_first_modfolder("ohno"), Optional(config.get_mod_folder() / "Case_Sensitive/OhNO/"));
+}
+
+TEST_P(DevModeOnOff, AllowlistBlocklist) {
+    auto reset = [&]() {
+        config.allowlist.clear();
+        config.blocklist.clear();
+
+        if (!config.developer_mode)
+            cache_mods();
+    };
+    auto add = [&](std::set<istring>& list, std::string mod) {
+        list.emplace(std::move(mod));
+        if (!config.developer_mode)
+            cache_mods();
+    };
+
+    reset();
+
+    EXPECT_THAT(
+        find_first_modfile("test.txt"), Optional(config.get_mod_folder() / "modA/test.txt"));
+
+    add(config.blocklist, "modA");
+
+    EXPECT_THAT(
+        find_first_modfile("test.txt"), Optional(config.get_mod_folder() / "modB/test.txt"));
+
+    add(config.blocklist, "modB");
+
+    EXPECT_EQ(find_first_modfile("test.txt"), std::nullopt);
+
+    reset();
+
+    add(config.allowlist, "modB");
+
+    EXPECT_THAT(
+        find_first_modfile("test.txt"), Optional(config.get_mod_folder() / "modB/test.txt"));
+
+    reset();
 }
 
 TEST(ImageFs, MD5DemanglingWorks) {

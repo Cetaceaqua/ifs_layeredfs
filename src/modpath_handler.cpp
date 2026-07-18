@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <set>
+#include <utility>
 
 #include "config.hpp"
 #include "log.hpp"
@@ -42,11 +43,11 @@ std::set<NormPath> walk_dir(const std::filesystem::path& root) {
 
 void cache_mods() {
     // this is a bit hacky
-    bool devmode          = config.developer_mode;
-    config.developer_mode = true;
+    bool devmode          = std::exchange(config.developer_mode, true);
     auto avail_mods       = available_mods();
     config.developer_mode = devmode;
 
+    cached_mods.clear();
     for (auto& dir : avail_mods) {
         log_verbose("Walking {}", dir);
         mod_contents_t mod;
@@ -131,7 +132,7 @@ std::vector<istring> available_mods() {
             }
 
             // if there is an allowlist, is this mod on it?
-            if (!config.allowlist.empty() && config.allowlist.contains(folder)) {
+            if (!config.allowlist.empty() && !config.allowlist.contains(folder)) {
                 if (first_search)
                     log_info("Ignoring non-allowlisted mod {}", folder);
 

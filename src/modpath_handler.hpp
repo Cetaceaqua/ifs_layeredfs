@@ -35,6 +35,13 @@ class NormPath : public istring {
     }
 };
 
+template <>
+struct fmt::formatter<NormPath> : fmt::formatter<std::string_view> {
+    auto format(const NormPath& s, format_context& ctx) const {
+        return fmt::formatter<std::string_view>::format({s.data(), s.size()}, ctx);
+    }
+};
+
 void init_modpath_handler();
 void modpath_debug_add_folder(std::string_view folder);
 void cache_mods();
