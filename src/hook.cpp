@@ -2,7 +2,10 @@
 
 #include <windows.h>
 
+#include <handleapi.h>
+#include <processthreadsapi.h>
 #include <stdint.h>
+#include <tlhelp32.h>
 #include <winternl.h>
 
 #include <filesystem>
@@ -618,17 +621,24 @@ unsigned int hook_pkfs_open(const char* name) {
 }
 
 static void dump_loaded_dll_info() {
-    log_verbose("DLLs loaded:");
-    auto peb   = NtCurrentTeb()->ProcessEnvironmentBlock;
-    auto head  = peb->Ldr->InMemoryOrderModuleList.Flink;
-    bool first = true;
-    for (auto mod = head; mod && (first || mod != head); mod = mod->Flink) {
-        auto ldr = reinterpret_cast<PLDR_DATA_TABLE_ENTRY>(mod);
-        std::string narrow_dll_name(
-            ldr->FullDllName.Buffer, ldr->FullDllName.Buffer + ldr->FullDllName.Length);
-        log_verbose("  {}", narrow_dll_name);
-        first = false;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        log_verbose("Could not dump loaded DLLs");
+        return;
     }
+
+    ScopeGuard _guard([=]() { CloseHandle(snapshot); });
+
+    MODULEENTRY32 mod = {.dwSize = sizeof(mod)};
+    if (!Module32First(snapshot, &mod)) {
+        log_verbose("Could not dump loaded DLLs (Module32First)");
+        return;
+    }
+
+    log_verbose("DLLs loaded:");
+    do {
+        log_verbose("  {}", mod.szModule);
+    } while (Module32Next(snapshot, &mod));
 }
 
 extern "C" {
