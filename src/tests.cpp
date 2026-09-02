@@ -321,6 +321,19 @@ TEST(RamFs, DemanglingWorksNabla) {
     EXPECT_EQ(path, "/data/graphics/ver07/logo.ifs/tex/texturelist.xml");
 }
 
+TEST(RamFs, DemanglingWorksDirectIfs) {
+    // LPAC / IFS v1 direct mounting
+    ramfs_demangler_on_fs_mount("script/today/", "img/script/today.ifs", "imagefs", std::nullopt);
+
+    std::string path1 = "/data/script/today/n_today_001.txt";
+    ramfs_demangler_demangle_if_possible(path1);
+    EXPECT_EQ(path1, "/data/img/script/today.ifs/n_today_001.txt");
+
+    std::string path2 = "script/today/n_today_001.txt";
+    ramfs_demangler_demangle_if_possible(path2);
+    EXPECT_EQ(path2, "/data/img/script/today.ifs/n_today_001.txt");
+}
+
 static std::vector<uint8_t> read_arc_file(istring const& arc_path, istring const& name) {
     std::ifstream f(arc_path.c_str(), std::ios::binary);
     if (!f)

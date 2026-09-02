@@ -200,15 +200,42 @@ void ramfs_demangler_on_fs_mount(std::string_view mountpoint, std::string_view f
             }
         }
     } else if (fstype == "imagefs") {
+        auto register_mangling = [&](std::string_view m, const std::string& r) {
+            std::string root = r;
+            while (root.ends_with('/'))
+                root.pop_back();
+
+            std::string clean_mount(m);
+            while (clean_mount.ends_with('/'))
+                clean_mount.pop_back();
+
+            if (clean_mount.empty())
+                return;
+
+            mangling_map[clean_mount] = root;
+
+            if (!clean_mount.starts_with('/')) {
+                mangling_map["/" + clean_mount] = root;
+                if (!clean_mount.starts_with("data/")) {
+                    mangling_map["/data/" + clean_mount] = root;
+                    mangling_map["data/" + clean_mount] = root;
+                }
+            } else {
+                if (!clean_mount.starts_with("/data/")) {
+                    mangling_map["/data" + clean_mount] = root;
+                }
+            }
+        };
+
         auto find = ramfs_map.longest_prefix(fsroot);
         if (find != ramfs_map.end()) {
             auto orig_path = *find;
             log_verbose("imagefs mount mapped to {}", orig_path);
-            mangling_map[mountpoint] = orig_path;
+            register_mangling(mountpoint, orig_path);
 
             auto cleanup = cleanup_map.find(orig_path);
             if (cleanup != cleanup_map.end()) {
-                cleanup->second.mounted_path = mountpoint;
+                cleanup->second.mounted_path = std::string(mountpoint);
             }
         } else if (fsroot.ends_with(".ifs")) {
             // Two scenarios reach here:
@@ -222,9 +249,17 @@ void ramfs_demangler_on_fs_mount(std::string_view mountpoint, std::string_view f
             // the result is something normalise_path can use.
             std::string root(fsroot);
             ramfs_demangler_demangle_if_possible(root);
+            if (!normalise_path(root, /* demangle */ false)) {
+                if (!root.starts_with("/data/") && !root.starts_with("data/") && !root.starts_with("./data/")) {
+                    if (root.starts_with("/"))
+                        root = "/data" + root;
+                    else
+                        root = "/data/" + root;
+                }
+            }
             if (normalise_path(root, /* demangle */ false)) {
                 log_verbose("imagefs mount mapped to {}", root);
-                mangling_map[mountpoint] = root;
+                register_mangling(mountpoint, root);
             }
         }
     }
@@ -234,9 +269,21 @@ void ramfs_demangler_demangle_if_possible(std::string& path) {
     std::lock_guard lock(mangling_mtx);
 
     auto search = mangling_map.longest_prefix(path);
+    if (search == mangling_map.end()) {
+        if (!path.starts_with('/')) {
+            std::string slash_path = "/" + path;
+            search = mangling_map.longest_prefix(slash_path);
+            if (search != mangling_map.end()) {
+                path = slash_path;
+            }
+        }
+    }
     if (search == mangling_map.end())
         return;
 
-    // log_verbose("can demangle {} to {}", search.key(), *search);
-    path.replace(0, search.key().size(), search.value());
+    auto key_len = search.key().size();
+    if (path.size() > key_len && path[key_len] != '/')
+        return;
+
+    path.replace(0, key_len, search.value());
 }
