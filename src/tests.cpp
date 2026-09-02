@@ -14,6 +14,7 @@
 #include "ramfs_demangler.hpp"
 #include "src/3rd_party/rapidxml.hpp"
 #include "src/utils.hpp"
+#include "txp2.hpp"
 
 using ::testing::Contains;
 using ::testing::Optional;
@@ -540,4 +541,18 @@ TEST(Regression, BeatStreamAfpXml) {
     auto geo = node->first_node("geo");
     ASSERT_NE(geo, nullptr);
     EXPECT_STREQ(geo->value(), "5 10 15");
+}
+
+TEST(Txp2, BasicDetection) {
+    // Valid TXP2 header buffer test
+    std::vector<uint8_t> fake_txp2(32, 0);
+    fake_txp2[0] = 'T';
+    fake_txp2[1] = 'X';
+    fake_txp2[2] = 'P';
+    fake_txp2[3] = '2';
+    // length
+    fake_txp2[15] = 32;
+    // features = 0 (no textures)
+    auto res = Txp2::from_bytes(fake_txp2);
+    EXPECT_EQ(res, std::nullopt);
 }

@@ -30,6 +30,7 @@
 #include "modpath_handler.hpp"
 #include "ramfs_demangler.hpp"
 #include "texbin.hpp"
+#include "txp2.hpp"
 #include "utils.hpp"
 
 #ifdef _DEBUG
@@ -389,11 +390,43 @@ void handle_texbin(HookFile& file) {
     }
     log_verbose("Regenerating cache");
 
-    Texbin texbin;
     auto _orig_data = file.load_to_vec();
     if (_orig_data) {
-        auto orig_data = *_orig_data;
-        // one extra copy which *sucks* but whatever
+        auto& orig_data = *_orig_data;
+        if (orig_data.size() >= 4 && (
+            (orig_data[0] == 'T' && orig_data[1] == 'X' && orig_data[2] == 'P' && orig_data[3] == '2') ||
+            (orig_data[0] == '2' && orig_data[1] == 'P' && orig_data[2] == 'X' && orig_data[3] == 'T'))) {
+            auto _txp2 = Txp2::from_bytes(orig_data);
+            if (!_txp2) {
+                log_warning("TXP2 load failed, aborting modding");
+                return;
+            }
+            auto txp2 = std::move(*_txp2);
+
+            auto folder_terminator = out.rfind("/");
+            auto out_folder        = out.substr(0, folder_terminator);
+            if (!mkdir_p(out_folder)) {
+                log_warning("TXP2: Couldn't create output cache folder");
+                return;
+            }
+
+            for (auto& [tex_name, path] : pngs_list) {
+                txp2.add_or_replace_image(tex_name.c_str(), path.c_str());
+            }
+
+            if (!txp2.save(out.c_str())) {
+                log_warning("TXP2: Couldn't create output");
+                return;
+            }
+
+            cache_hasher.commit();
+            file.mod_path = out;
+            log_misc("TXP2 generation took {}", timer.elapsed());
+            return;
+        }
+
+        // Legacy TEXP texbin
+        Texbin texbin;
         std::istringstream stream(std::string((char*)&orig_data[0], orig_data.size()));
         auto _texbin = Texbin::from_stream(stream);
         if (!_texbin) {
@@ -401,31 +434,31 @@ void handle_texbin(HookFile& file) {
             return;
         }
         texbin = *_texbin;
+
+        auto folder_terminator = out.rfind("/");
+        auto out_folder        = out.substr(0, folder_terminator);
+        if (!mkdir_p(out_folder)) {
+            log_warning("Texbin: Couldn't create output cache folder");
+            return;
+        }
+
+        for (auto& [tex_name, path] : pngs_list) {
+            texbin.add_or_replace_image(tex_name.c_str(), path.c_str());
+        }
+
+        if (!texbin.save(out.c_str())) {
+            log_warning("Texbin: Couldn't create output");
+            return;
+        }
+
+        cache_hasher.commit();
+        file.mod_path = out;
+        log_misc("Texbin generation took {}", timer.elapsed());
+        return;
     } else {
         log_info("Found texbin mods but no original file, creating from scratch: \"{}\"",
             file.norm_path);
     }
-
-    auto folder_terminator = out.rfind("/");
-    auto out_folder        = out.substr(0, folder_terminator);
-    if (!mkdir_p(out_folder)) {
-        log_warning("Texbin: Couldn't create output cache folder");
-        return;
-    }
-
-    for (auto& [tex_name, path] : pngs_list) {
-        texbin.add_or_replace_image(tex_name.c_str(), path.c_str());
-    }
-
-    if (!texbin.save(out.c_str())) {
-        log_warning("Texbin: Couldn't create output");
-        return;
-    }
-
-    cache_hasher.commit();
-    file.mod_path = out;
-
-    log_misc("Texbin generation took {}", timer.elapsed());
 }
 
 uint32_t handle_file_open(HookFile& file) {
